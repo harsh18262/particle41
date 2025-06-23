@@ -70,7 +70,7 @@ jobs:
     - name: Run security scan with Trivy
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.IMAGE_URI }}
+        image-ref: ${{ steps.set-output.outputs.image }}
         format: 'sarif'
         output: 'trivy-results.sarif'
       continue-on-error: true
