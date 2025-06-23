@@ -7,6 +7,22 @@ A minimalist time service application with Docker containerization and AWS cloud
 ```bash
 git clone https://github.com/harsh18262/particle41.git
 ```
+## Architecture
+
+This project demonstrates:
+- Containerized application development with Docker
+- Infrastructure as Code using Terraform
+- AWS cloud deployment with ECS Fargate
+- Content delivery via CloudFront
+
+## Project Structure
+
+```
+particle41/
+├── app/                    # Application source code and Docker files
+├── terraform/              # Terraform infrastructure configuration
+└── README.md              # This file
+```
 
 ## Task 1 - Minimalist Application Development / Docker / Kubernetes
 
@@ -100,22 +116,7 @@ git clone https://github.com/harsh18262/particle41.git
    
    Once the Terraform apply completes successfully, you can access the application using the CloudFront domain URL provided in the Terraform output.
 
-## Architecture
 
-This project demonstrates:
-- Containerized application development with Docker
-- Infrastructure as Code using Terraform
-- AWS cloud deployment with ECS Fargate
-- Content delivery via CloudFront
-
-## Project Structure
-
-```
-particle41/
-├── app/                    # Application source code and Docker files
-├── terraform/              # Terraform infrastructure configuration
-└── README.md              # This file
-```
 ## 🎯 Going Above and Beyond
 
 This project includes additional automation and best practices to demonstrate a complete DevOps workflow - because why stop at just meeting requirements when you can gather some brownie points! 
@@ -169,7 +170,11 @@ The pipeline consists of four jobs:
 - **Infrastructure planning** with Terraform
 - **PR comments** showing planned changes
 - **Production environment** protection
- 
+
+### Improvements
+- It can have a remote backend for state management and locking.In this case it was not used to save costs.
+- It can have caching enabled for docker images.
+- It ca 
 
 ### Remote Backend Setup Using S3 and DynamoDB
 
