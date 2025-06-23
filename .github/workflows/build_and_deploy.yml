@@ -93,6 +93,9 @@ jobs:
     - name: Terraform Validate
       working-directory: ./terraform
       run: terraform validate
+      
+    - name: debug echo
+      run: echo "${{ needs.build.outputs.image-uri }}"
 
     - name: Terraform Plan
       id: tf-plan
