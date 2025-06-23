@@ -34,7 +34,7 @@ resource "aws_ecs_task_definition" "this" {
   container_definitions = jsonencode([
     {
       name  = "app"
-      image = "harsh18262/particle41"  # Replace with your container image
+      image = var.container_image 
       portMappings = [
         {
           containerPort = 8080
