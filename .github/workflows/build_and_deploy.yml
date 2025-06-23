@@ -103,12 +103,20 @@ jobs:
           -var="container_image=${{ needs.build.outputs.image-uri }}" || export exitcode=$?
         
         echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+        echo "Terraform Plan Exit Code: $exitcode"
         
         if [ $exitcode -eq 1 ]; then
-          echo Terraform Plan Failed!
+          echo "❌ Terraform Plan Failed!"
           exit 1
-        else 
+        elif [ $exitcode -eq 0 ]; then
+          echo "✅ Terraform Plan Successful - No changes detected"
           exit 0
+        elif [ $exitcode -eq 2 ]; then
+          echo "✅ Terraform Plan Successful - Changes detected"
+          exit 0
+        else
+          echo "❌ Terraform Plan returned unexpected exit code: $exitcode"
+          exit 1
         fi
 
     - name: Publish Terraform Plan
@@ -160,7 +168,7 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: [build, terraform-plan]
-    if: github.ref == 'refs/heads/main' && needs.terraform-plan.outputs.tfplanExitCode == 2
+    if: github.ref == 'refs/heads/main' && (needs.terraform-plan.outputs.tfplanExitCode == '2' || needs.terraform-plan.outputs.tfplanExitCode == '0')
     environment: production
     
     steps:
@@ -191,7 +199,10 @@ jobs:
 
     - name: Terraform Apply
       working-directory: ./terraform
-      run: terraform apply -auto-approve tfplan
+      run: |
+        echo "Applying Terraform plan..."
+        echo "Plan exit code was: ${{ needs.terraform-plan.outputs.tfplanExitCode }}"
+        terraform apply -auto-approve tfplan
 
     - name: Get Terraform Outputs
       id: tf-outputs
