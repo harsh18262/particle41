@@ -196,6 +196,36 @@ jobs:
       with:
         name: tfplan
         path: terraform/
+    
+    - name: Backup Current State
+      working-directory: ./terraform
+      run: |
+        # Create backup directory
+        mkdir -p ../terraform-backups
+        
+        # Create timestamped backup
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        COMMIT_SHA="${{ github.sha }}"
+        BACKUP_FILE="../terraform-backups/terraform-state-${TIMESTAMP}-${COMMIT_SHA:0:8}.json"
+        
+        # Export current state (this works even with remote state)
+        terraform show -json > "$BACKUP_FILE"
+        
+        # Also backup raw state if exists locally
+        if [ -f "terraform.tfstate" ]; then
+          cp terraform.tfstate "../terraform-backups/terraform-${TIMESTAMP}.tfstate"
+        fi
+        
+        echo "State backup created: $BACKUP_FILE"
+        ls -la ../terraform-backups/
+
+    - name: Upload Pre-Apply State Backup
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: terraform-pre-apply-backup-${{ github.sha }}
+        path: terraform-backups/
+        retention-days: 30
 
     - name: Terraform Apply
       working-directory: ./terraform
@@ -203,6 +233,35 @@ jobs:
         echo "Applying Terraform plan..."
         echo "Plan exit code was: ${{ needs.terraform-plan.outputs.tfplanExitCode }}"
         terraform apply -auto-approve tfplan
+    
+    - name: Backup Post-Apply State
+      if: always()
+      working-directory: ./terraform
+      run: |
+        # Create post-apply backup directory
+        mkdir -p ../terraform-post-apply
+        
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        COMMIT_SHA="${{ github.sha }}"
+        
+        # Export final state
+        terraform show -json > "../terraform-post-apply/terraform-final-state-${TIMESTAMP}-${COMMIT_SHA:0:8}.json"
+        
+        # Copy state files if they exist
+        if [ -f "terraform.tfstate" ]; then
+          cp terraform.tfstate "../terraform-post-apply/"
+        fi
+        if [ -f "terraform.tfstate.backup" ]; then
+          cp terraform.tfstate.backup "../terraform-post-apply/"
+        fi
+
+    - name: Upload Post-Apply State
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: terraform-post-apply-state-${{ github.sha }}
+        path: terraform-post-apply/
+        retention-days: 30
 
     - name: Get Terraform Outputs
       id: tf-outputs
@@ -211,6 +270,7 @@ jobs:
         echo "cloudfront-url=$(terraform output -raw cloudfront_domain_name)" >> $GITHUB_OUTPUT
 
     - name: Create Deployment Summary
+      if: steps.tf-apply.outputs.apply-exit-code == '0'
       run: |
         echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -220,8 +280,35 @@ jobs:
         echo "- **Docker Hub Repository**: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Deployment Time**: $(date)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### State Backups" >> $GITHUB_STEP_SUMMARY
+        echo "- Pre-apply state backup: terraform-pre-apply-backup-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Post-apply state backup: terraform-post-apply-state-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Access Your Application" >> $GITHUB_STEP_SUMMARY
         echo "🌐 [Open Application](https://${{ steps.tf-outputs.outputs.cloudfront-url }})" >> $GITHUB_STEP_SUMMARY
+
+    - name: Create Failure Summary
+      if: steps.tf-apply.outputs.apply-exit-code != '0'
+      run: |
+        echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Details" >> $GITHUB_STEP_SUMMARY
+        echo "- **Docker Image**: ${{ needs.build.outputs.image-uri }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Apply Exit Code**: ${{ steps.tf-apply.outputs.apply-exit-code }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### State Backups" >> $GITHUB_STEP_SUMMARY
+        echo "- Pre-apply state backup: terraform-pre-apply-backup-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Post-apply state backup: terraform-post-apply-state-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Check the job logs for detailed error information." >> $GITHUB_STEP_SUMMARY
+
+    - name: Fail Job if Apply Failed
+      if: steps.tf-apply.outputs.apply-exit-code != '0'
+      run: |
+        echo "❌ Terraform apply failed!"
+        echo "State backups have been preserved in artifacts."
+        exit 1
 
   notify:
     name: Notify Deployment Status
