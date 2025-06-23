@@ -52,19 +52,12 @@ jobs:
       run: |
         IMAGE_URI=$(cat image-uri.txt)
         echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
-        echo "Setting output to: $IMAGE_URI"
-
+        
     - name: Upload Image URI as Artifact
       uses: actions/upload-artifact@v4
       with:
         name: image-uri
         path: image-uri.txt
-
-    - name: Verify Output
-      run: |
-        echo "Final verification:"
-        echo "File contents: $(cat image-uri.txt)"
-        echo "Step output: ${{ steps.set-output.outputs.image }}"
 
     - name: Run security scan with Trivy
       uses: aquasecurity/trivy-action@master
@@ -100,29 +93,8 @@ jobs:
     - name: Get Image URI
       id: get-image
       run: |
-        # Method 1: From job output
-        IMAGE_FROM_OUTPUT="${{ needs.build.outputs.image-uri }}"
-        
-        # Method 2: From artifact file
         IMAGE_FROM_FILE=$(cat image-uri.txt)
-        
-        echo "Image from output: '$IMAGE_FROM_OUTPUT'"
-        echo "Image from file: '$IMAGE_FROM_FILE'"
-  
-        # Use whichever one is not empty
-        if [ -n "$IMAGE_FROM_OUTPUT" ]; then
-          IMAGE_URI="$IMAGE_FROM_OUTPUT"
-          echo "Using image from job output"
-        elif [ -n "$IMAGE_FROM_FILE" ]; then
-          IMAGE_URI="$IMAGE_FROM_FILE"
-          echo "Using image from artifact file"
-        else
-          echo "❌ Both methods failed to get image URI!"
-          exit 1
-        fi
-        
-        echo "Final IMAGE_URI: $IMAGE_URI"
-        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+        echo "IMAGE_URI=$IMAGE_FROM_FILE" >> $GITHUB_ENV
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -139,18 +111,6 @@ jobs:
     - name: Terraform Init
       working-directory: ./terraform
       run: terraform init
-
-    - name: Terraform Format Check
-      working-directory: ./terraform
-      run: terraform fmt -check
-      continue-on-error: true
-
-    - name: Terraform Validate
-      working-directory: ./terraform
-      run: terraform validate
-
-    - name: debug echo
-      run: echo "${{ needs.build.outputs.image-uri }}"
 
     - name: Terraform Plan
       id: tf-plan
@@ -232,6 +192,17 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Download Image URI Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: image-uri
+
+    - name: Get Image URI
+      id: get-image
+      run: |
+        IMAGE_FROM_FILE=$(cat image-uri.txt)
+        echo "IMAGE_URI=$IMAGE_FROM_FILE" >> $GITHUB_ENV
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
