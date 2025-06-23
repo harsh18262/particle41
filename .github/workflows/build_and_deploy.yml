@@ -7,6 +7,13 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  id-token: write
+  pull-requests: write
+
 env:
   AWS_REGION: us-east-1
   DOCKER_REPOSITORY: simple-time-service
@@ -69,9 +76,10 @@ jobs:
 
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
+      if: always() && github.event_name != 'pull_request'
       with:
         sarif_file: 'trivy-results.sarif'
+        category: 'trivy-container-scan'
       continue-on-error: true
 
     - name: Upload Trivy results as artifact
@@ -87,7 +95,7 @@ jobs:
       run: |
         if [ -f "trivy-results.sarif" ]; then
           echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "Trivy security scan completed for image: ${{ steps.build-image.outputs.image }}" >> $GITHUB_STEP_SUMMARY
+          echo "Trivy security scan completed for image: ${{ steps.set-output.outputs.image }}" >> $GITHUB_STEP_SUMMARY
           echo "Results have been uploaded to the Security tab and saved as artifacts." >> $GITHUB_STEP_SUMMARY
         else
           echo "## ❌ Security Scan Failed" >> $GITHUB_STEP_SUMMARY
