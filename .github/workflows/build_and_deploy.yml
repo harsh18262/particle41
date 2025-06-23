@@ -35,13 +35,36 @@ jobs:
       env:
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        # Build a docker container and push it to Docker Hub
         cd app
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:$IMAGE_TAG .
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:$IMAGE_TAG
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:latest
-        echo "image=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        FULL_IMAGE_URI="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:$IMAGE_TAG"
+        
+        docker build -t "$FULL_IMAGE_URI" .
+        docker build -t "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:latest" .
+        docker push "$FULL_IMAGE_URI"
+        docker push "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:latest"
+        
+        # Store in a file for sharing between jobs
+        echo "$FULL_IMAGE_URI" > ../image-uri.txt
+        echo "Built and pushed: $FULL_IMAGE_URI"
+
+    - name: Set Output Explicitly
+      id: set-output
+      run: |
+        IMAGE_URI=$(cat image-uri.txt)
+        echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
+        echo "Setting output to: $IMAGE_URI"
+
+    - name: Upload Image URI as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: image-uri
+        path: image-uri.txt
+
+    - name: Verify Output
+      run: |
+        echo "Final verification:"
+        echo "File contents: $(cat image-uri.txt)"
+        echo "Step output: ${{ steps.set-output.outputs.image }}"
 
     - name: Run security scan with Trivy
       uses: aquasecurity/trivy-action@master
@@ -69,6 +92,38 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Download Image URI Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: image-uri
+
+    - name: Get Image URI
+      id: get-image
+      run: |
+        # Method 1: From job output
+        IMAGE_FROM_OUTPUT="${{ needs.build.outputs.image-uri }}"
+        
+        # Method 2: From artifact file
+        IMAGE_FROM_FILE=$(cat image-uri.txt)
+        
+        echo "Image from output: '$IMAGE_FROM_OUTPUT'"
+        echo "Image from file: '$IMAGE_FROM_FILE'"
+  
+        # Use whichever one is not empty
+        if [ -n "$IMAGE_FROM_OUTPUT" ]; then
+          IMAGE_URI="$IMAGE_FROM_OUTPUT"
+          echo "Using image from job output"
+        elif [ -n "$IMAGE_FROM_FILE" ]; then
+          IMAGE_URI="$IMAGE_FROM_FILE"
+          echo "Using image from artifact file"
+        else
+          echo "❌ Both methods failed to get image URI!"
+          exit 1
+        fi
+        
+        echo "Final IMAGE_URI: $IMAGE_URI"
+        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
@@ -93,7 +148,7 @@ jobs:
     - name: Terraform Validate
       working-directory: ./terraform
       run: terraform validate
-      
+
     - name: debug echo
       run: echo "${{ needs.build.outputs.image-uri }}"
 
@@ -103,7 +158,7 @@ jobs:
       run: |
         export exitcode=0
         terraform plan -detailed-exitcode -no-color -out tfplan \
-          -var="container_image=${{ needs.build.outputs.image-uri }}" || export exitcode=$?
+          -var="container_image=${{ env.IMAGE_URI }}" || export exitcode=$?
         
         echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
         echo "Terraform Plan Exit Code: $exitcode"
